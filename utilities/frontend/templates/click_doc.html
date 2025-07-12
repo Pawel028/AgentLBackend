@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Click or Upload Document</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f7fa;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 600px;
+      margin: 50px auto;
+      background-color: #fff;
+      padding: 30px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    video, canvas {
+      width: 100%;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      margin: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: white;
+      background-color: #007bff;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .nav-button {
+      background-color: #6c757d;
+    }
+
+    .nav-button:hover {
+      background-color: #5a6268;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Click Picture of the Document</h2>
+
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <form method="POST" enctype="multipart/form-data" id="capture-form">
+      <input type="hidden" name="image_data" id="image_data">
+      <button type="button" onclick="switchCamera()">Switch Camera</button>
+      <button type="button" onclick="captureImage()">Capture</button>
+      <button type="submit">Submit</button>
+      <a href="{{ url_for('chatbot.main') }}"><button type="button" class="nav-button">Back to Chat</button></a>
+    </form>
+  </div>
+
+  <script>
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let imageDataInput = document.getElementById('image_data');
+    let currentFacingMode = "environment"; // default back camera
+    let stream = null;
+
+    async function startCamera(facingMode = "environment") {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: facingMode } },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (e) {
+        alert("Unable to access camera: " + e.message);
+      }
+    }
+
+    function switchCamera() {
+      currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+      startCamera(currentFacingMode);
+    }
+
+    function captureImage() {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      let ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      let imageData = canvas.toDataURL('image/jpeg');
+      imageDataInput.value = imageData;
+      alert("Image captured! Now press Submit.");
+    }
+
+    // Start default camera on load
+    window.onload = () => {
+      startCamera();
+    };
+  </script>
+</body>
+</html>

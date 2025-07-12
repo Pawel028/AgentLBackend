@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AgentLaw Chatbot</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #eef1f6;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .sidebar-left {
+      width: 220px;
+      background-color: #f8f9fa;
+      border-right: 1px solid #ddd;
+      padding: 20px;
+      box-shadow: 2px 0 6px rgba(0,0,0,0.05);
+      color: black; /* Sidebar text color */
+    }
+
+    .sidebar-left h4 {
+      margin-top: 0;
+      color: #333;
+      font-size: 16px;
+    }
+
+    .session-button {
+      display: block;
+      width: 100%;
+      background-color: #ffffff;
+      color: #000;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 8px;
+      margin-bottom: 10px;
+      text-align: left;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .session-button:hover {
+      background-color: #e2e6ea;
+    }
+
+    .session-button.active {
+      background-color: #007bff;
+      color: white;
+    }
+
+    .chat-section {
+      flex: 1;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 0;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #2c3e50;
+      text-align: center;
+    }
+
+    .chatbox {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      height: 320px;
+      overflow-y: auto;
+      padding: 20px;
+      background: #fafafa;
+      margin-bottom: 20px;
+    }
+
+    .message {
+      margin: 12px 0;
+      line-height: 1.4;
+    }
+
+    .user {
+      color: #1e90ff;
+      font-weight: bold;
+    }
+
+    .bot {
+      color: #28a745;
+      font-weight: bold;
+    }
+
+    input[type="text"] {
+      padding: 12px;
+      font-size: 16px;
+      width: 100%;
+      margin-bottom: 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 10px 15px;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    a button {
+      background-color: #17a2b8;
+    }
+
+    a button:hover {
+      background-color: #138496;
+    }
+
+    button[name="delete_history"] {
+      background-color: #dc3545;
+    }
+
+    button[name="delete_history"]:hover {
+      background-color: #b52b38;
+    }
+
+    button[name="generate_results"] {
+      background-color: #28a745;
+    }
+
+    button[name="generate_results"]:hover {
+      background-color: #218838;
+    }
+
+    button[name="save_session"],
+    button[name="load_session"] {
+      background-color: #6f42c1;
+    }
+
+    #sidebar {
+      position: fixed;
+      right: 30px;
+      top: 30px;
+      width: 320px;
+      height: 500px;
+      overflow-y: auto;
+      background-color: #f8f9fa;
+      border-left: 1px solid #ccc;
+      padding: 20px;
+      box-shadow: -2px 0 6px rgba(0, 0, 0, 0.08);
+      font-size: 14px;
+    }
+
+    #checkDocStatusBtn {
+      margin-left: 30px;
+      margin-top: 10px;
+      background-color: #ffc107;
+      color: #333;
+    }
+
+    #checkDocStatusBtn:hover {
+      background-color: #e0a800;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+
+      .sidebar-left, #sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Sidebar for sessions -->
+    <div class="sidebar-left">
+      <h4>🗂️ Sessions</h4>
+      <form method="POST">
+        {% for s in session_list %}
+          <button class="session-button {% if s == current_session %}active{% endif %}" type="submit" name="session_name" value="{{ s }}">
+            {{ s }}
+          </button>
+        {% endfor %}
+        <button type="submit" name="new_session" value="1" style="background-color: #20c997; color: white;">➕ New Session</button>
+        <button type="submit" name="save_session" value="1">💾 Save Current</button>
+      </form>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat-section">
+      <h2>🧑‍⚖️ Agent L is here to help you</h2>
+      <p style="color: #555; font-size: 14px;">Session: {{ current_session }}</p>
+
+      <div class="chatbox" id="chatbox">
+        {% for sender, message in chat_history %}
+          <div class="message">
+            <span class="{{ 'user' if sender == 'User' else 'bot' }}">{{ sender }}:</span> {{ message }}
+          </div>
+        {% endfor %}
+        <div class="message">
+          <span class="bot">Final Results:</span> {{ lawyer_response }}
+        </div>
+      </div>
+
+      <form method="POST">
+        <input type="text" name="user_input" placeholder="Type your message..." required>
+        <div class="nav-buttons">
+          <button type="submit">Send</button>
+          <button type="submit" name="delete_history" value="1">🗑️ Clear Chat</button>
+          <a href="{{ url_for('chatbot.click_doc') }}"><button type="button">📸 Click Document</button></a>
+          <button type="submit" name="generate_results" value="1">🧩 Address Issue</button>
+          <a href="{{ url_for('auth.logout') }}"><button type="button">🚪 Logout</button></a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sidebar for extracted text -->
+  <div id="sidebar">
+    <h4>📄 Extracted Text</h4>
+    <pre id="img-text-content">Loading...</pre>
+  </div>
+
+  <!-- Document Status Button -->
+  <!-- <button id="checkDocStatusBtn">📄 Check Document Status</button> -->
+  <!-- <div id="docStatus" style="margin-left: 30px; margin-top: 5px;"></div> -->
+
+  <script>
+    window.onload = function () {
+      const chatbox = document.getElementById("chatbox");
+      chatbox.scrollTop = chatbox.scrollHeight;
+
+      // Load extracted text
+      fetch('/get_uploaded_img_text')
+        .then(response => response.json())
+        .then(data => {
+          const pre = document.getElementById("img-text-content");
+          pre.innerText = data.text && data.text.length > 0 ? data.text.join('\n') : "No extracted text found.";
+        });
+    };
+
+    document.getElementById('checkDocStatusBtn').addEventListener('click', function () {
+      document.getElementById('docStatus').innerText = "⏳ Checking...";
+      fetch('/get_uploaded_img_text')
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'done') {
+            document.getElementById('docStatus').innerText = "✅ Document processed!";
+            const resultText = `✅ Extracted Content:\n${data.content}\n\n✍️ Summary:\n${data.summary}`;
+            alert(resultText);
+          } else if (data.status === 'processing') {
+            document.getElementById('docStatus').innerText = "⚙️ Still processing. Try again shortly.";
+          } else {
+            document.getElementById('docStatus').innerText = "❌ No job in queue.";
+          }
+        })
+        .catch(error => {
+          console.error(error);
+          document.getElementById('docStatus').innerText = "⚠️ Error occurred.";
+        });
+    });
+  </script>
+
+</body>
+</html>

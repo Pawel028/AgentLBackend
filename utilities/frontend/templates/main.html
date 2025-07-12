@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Welcome, {{ email }}</h2>
+<p>This is your main page after login.</p>
+<a href="{{ url_for('auth.logout') }}" class="btn btn-danger">Logout</a>
+<a href="{{ url_for('chatbot.click_doc') }}">
+  <button>Click the Pic of the Document</button>
+</a>
+{% if image_preview %}
+  <h4>Last Uploaded Document:</h4>
+  <img src="data:image/jpeg;base64,{{ image_preview }}" width="200">
+{% endif %}
+{% endblock %}
