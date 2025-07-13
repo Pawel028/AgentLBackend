@@ -302,6 +302,6 @@ class lawyerAgent():
         )
 
         # Access the plain text response
-        final_report = response.choices[0].message.content
+        final_report = self.results+"\n\n\n"+response.choices[0].message.content
         # final_text = parsed.final_output
         return final_report

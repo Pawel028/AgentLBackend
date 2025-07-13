@@ -16,3 +16,4 @@ Pillow
 langchain-community
 azure-storage-blob 
 azure-identity
+bs4
