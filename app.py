@@ -12,7 +12,7 @@ doc_intelligence_client = AzureDocIntelligenceClient(
     key=os.getenv('DOCUMENTINTELLIGENCE_KEY')
 )
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/api/*": {"origins": "*"}}) # Enable CORS for all routes
 
 @app.route('/api/SessionList', methods=['POST'])
 def session_list():
