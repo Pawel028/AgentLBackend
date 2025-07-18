@@ -7,6 +7,11 @@ import os
 from utilities.backend.docrecognizer import AzureDocIntelligenceClient
 import base64
 import json
+
+def format_chat_history(chat_history):
+    return [['User' if i['isUser'] else 'Bot', i['content']] for i in chat_history]
+
+
 doc_intelligence_client = AzureDocIntelligenceClient(
     endpoint=os.getenv('DOCUMENTINTELLIGENCE_ENDPOINT'),
     key=os.getenv('DOCUMENTINTELLIGENCE_KEY')
@@ -77,17 +82,26 @@ def finalize():
     data = request.get_json()
     if not data or 'chat_history' not in data or 'uploaded_Img_text' not in data:
         return jsonify({'error': 'Missing chat_history or uploaded_Img_text in JSON body'}), 400
+    
     chat_history = data['chat_history']
+    # print(chat_history)
+    print(f'query is: {data["query"]}')
     uploaded_Img_text = data['uploaded_Img_text']   
     uploaded_Img_text_summary = data.get('uploaded_Img_text_summary', [])
     # Here you would typically finalize the session, e.g., save it to a database or perform cleanup
+    print(type(chat_history), type(chat_history[0]))
+    if type(chat_history[0])==dict:
+        chat_history1 = format_chat_history(chat_history)
+    else:
+        chat_history1 = chat_history
     lawyerAgent_obj = lawyerAgent(
-        chat_history=chat_history,
+        chat_history=chat_history1,
         uploaded_Img_text=uploaded_Img_text,
         uploaded_Img_text_summary=uploaded_Img_text_summary
     )
     try:
         lawyer_response = lawyerAgent_obj.finalize()
+        print(lawyer_response)
         return jsonify({'lawyer_response': lawyer_response}), 200 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
