@@ -71,6 +71,11 @@ class AzureBlobStorageClient:
         blob_client.upload_json(f"{base_path}/uploaded_text.json", {"data": uploaded_Img_text})
         blob_client.upload_json(f"{base_path}/summary.json", {"data": uploaded_Img_text_summary})
 
+    def save_conversation_to_blob(self, convo):
+        blob_client = AzureBlobStorageClient(user_name=self.user_name,session_id = self.session_id)
+        base_path = f"{sanitize_filename(self.user_name)}/sessions/{sanitize_filename(self.session_id)}"
+        blob_client.upload_json(f"{base_path}/conversation.json", {"data": convo})
+
     def load_session_from_blob(self):
         blob_client = AzureBlobStorageClient(user_name=self.user_name,session_id = self.session_id)
         base_path = f"{sanitize_filename(self.user_name)}/sessions/{sanitize_filename(self.session_id)}"    
@@ -184,4 +189,18 @@ class AzureBlobStorageClient:
                 sessions.add(parts[2])  # Extract session_name
         return list(sessions)
     
-    
+    def list_blobs_in_session(self) -> list:
+        prefix = f"{sanitize_filename(self.user_name)}/sessions/"
+        container_client = self.blob_service_client.get_container_client(self.container_name)
+        blobs = container_client.list_blobs(name_starts_with=prefix)
+        return [blob.name for blob in blobs]
+
+    def download_prior_Conversations(self) -> list:
+        paths = self.list_blobs_in_session()
+        convo_paths = [path for path in paths if "conversation.json" in path]
+        prefix = f"{sanitize_filename(self.user_name)}/sessions/"
+        list_blob = [self.download_json(convo_path) for convo_path in convo_paths]
+
+        return [blob['data'] for blob in list_blob] 
+
+

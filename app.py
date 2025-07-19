@@ -1,13 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,url_for,render_template
 from flask_cors import CORS
 from utilities.backend.azureblobstorage import AzureBlobStorageClient
 from utilities.backend.litigator_agent import lawyerAgent
 from utilities.backend.doc_extracter_agent import extractorAgent
 import os
 from utilities.backend.docrecognizer import AzureDocIntelligenceClient
+
 import base64
 import json
-
+import bcrypt
+import secrets
+from flask_mail import Mail,Message
+reset_tokens = {}
 def format_chat_history(chat_history):
     return [['User' if i['isUser'] else 'Bot', i['content']] for i in chat_history]
 
@@ -17,7 +21,127 @@ doc_intelligence_client = AzureDocIntelligenceClient(
     key=os.getenv('DOCUMENTINTELLIGENCE_KEY')
 )
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}) # Enable CORS for all routes
+# Email config
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv('EMAIL_USER')  # Your email address
+app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASS')  # Your email app password
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_USER')
+
+mail = Mail(app)
+CORS(app, supports_credentials=True) # Enable CORS for all routes
+
+from flask import Flask, request, jsonify, session
+from flask_cors import CORS
+from pymongo import MongoClient
+from werkzeug.security import check_password_hash
+import os
+from utilities.backend.security import hash_password, is_strong_password, check_password
+
+def get_db():
+    client = MongoClient(os.getenv("MONGODB_URI"))
+    db = client["AgentLawDB"]
+    return db
+
+@app.route('/api/signup', methods = ['POST'])
+def signup():
+    data = request.get_json()
+    username = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    if not is_strong_password(password):
+        return jsonify({"message":"Password too weak. Must include 8+ chars, upper/lowercase, digit, and special char.","success":False}),401
+    hashed_pw = hash_password(password)
+    db = get_db()
+    existing_user = db.users.find_one({'$or': [{'username': username}, {'email': email}]})
+    print("existing_user")
+    if existing_user:
+        return jsonify({"message":"Email or username already exists","success":False}), 402
+    db.users.insert_one({
+            'username': username,
+            'email': email,
+            'password': hashed_pw
+        })
+    
+    user = db.users.find_one({'email': email})
+
+    return jsonify({"message":"Account added successfully", 
+            'success': True,
+            'user':{
+                'id': str(user['_id']),
+                'email': email,
+                'name': username
+            }}),200
+
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    db = get_db()
+    user = db.users.find_one({'email': email})
+    stored_hashed = user['password'] 
+
+    if user and check_password(password, stored_hashed):
+        # session['user'] = email
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': {
+                'id': str(user['_id']),
+                'email': user['email'],
+                'name': user.get('name', '')
+            }
+        }), 200
+    else:
+        return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+
+@app.route('/api/forgot', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        data = request.get_json()
+        email = data.get('email')
+        token = secrets.token_urlsafe(16)
+        reset_tokens[email] = token
+
+        msg = Message("Password Reset",
+                      sender=os.getenv('EMAIL_USER'),
+                      recipients=[email])
+        frontend_base_url = os.getenv("FRONTEND_URL")
+        # reset_link = f"{FRONTEND_URL.rstrip('/')}/reset-password?email={email}&token={token}"
+
+        link = f"{frontend_base_url.rstrip('/')}#/reset-password?email={email}&token={token}"
+
+        msg.body = f"Click the link to reset your password:\n{link}"
+        mail.send(msg)
+        return jsonify({"message":"Password reset email sent!"}),200
+
+@app.route('/api/reset-password', methods=['POST'])
+def reset_password():
+    print("Starting Toekn reset")
+    data = request.get_json()
+    email = data.get('email')
+    token = data.get('token')
+    new_password = data.get('new_password')
+
+    if reset_tokens.get(email) != token:
+        return jsonify({"error": "Invalid or expired token"}), 400
+
+    db = get_db()
+    # hashed_pw = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())
+    hashed_pw = hash_password(new_password)
+    db.users.update_one({'email': email}, {'$set': {'password': hashed_pw}})
+
+    print("Toekn reset",reset_tokens[email])
+
+    del reset_tokens[email]  # Remove token after use
+    return jsonify({"message": "Password has been reset"}), 200
+
+
 
 @app.route('/api/SessionList', methods=['POST'])
 def session_list():
@@ -40,21 +164,40 @@ def session_list():
 def save_session():
     try:
         data = request.get_json()
-        if not data or 'user_name' not in data or 'session_name' not in data:
-            return jsonify({'error': 'Missing user_name or session_name in JSON body'}), 400
+        # print(data['user_name'])
+        if not data or 'user_name' not in data or 'conversations' not in data:
+            return jsonify({'error': 'Missing user_name or conversations'}), 400
 
         user_name = data['user_name']
-        session_name = data['session_name']
-        chat_history = data.get('chat_history', [])
-        uploaded_Img_text = data.get('uploaded_Img_text', [])
-        uploaded_Img_text_summary = data.get('uploaded_Img_text_summary', [])
-
+        conversations = data['conversations']  # This is a list of sessions
+        # print([i['isCurrent'] for i in conversations])
+        print(conversations[[i['isCurrent'] for i in conversations].index(True)])
+        convo = conversations[[i['isCurrent'] for i in conversations].index(True)]
+        print(convo)
+        session_name = convo['id']
         blob_client = AzureBlobStorageClient(user_name=user_name, session_id=session_name)
-        blob_client.save_session_to_blob(chat_history, uploaded_Img_text, uploaded_Img_text_summary)
+        blob_client.save_conversation_to_blob(convo)
 
         return jsonify({'message': 'Session saved successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/loadConversation', methods=['POST', 'GET'])
+def loadConversation():
+    try:
+        data = request.get_json()
+        print(data)
+        if not data or 'username' not in data:
+            return jsonify({'error': 'Missing user_name or session_name in JSON body'}), 400
+        user_name = data['username']
+        print(user_name)
+        blob_client = AzureBlobStorageClient(user_name=user_name)
+        blobs = blob_client.download_prior_Conversations()
+        print("Blobs are: ",blobs)
+        return jsonify({'sessions': blobs, 'success':True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/LoadSession', methods=['POST'])
 def load_session():
@@ -105,7 +248,17 @@ def finalize():
         return jsonify({'lawyer_response': lawyer_response}), 200 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
+@app.route('/api/upload', methods=['POST'])
+def upload():
+    files = request.files
+    for key in files:
+        file = files[key]
+        print(f"Received {key}: {file.filename} ({file.content_type})")
+        # Save if needed:
+        # file.save(f"./uploads/{file.filename}")
+    return jsonify({'status': 'success', 'files_received': len(files)})
+
 @app.route('/api/uploadfile', methods=['POST'])
 def upload_file():
     try:
