@@ -85,7 +85,8 @@ def login():
     db = get_db()
     user = db.users.find_one({'email': email})
     stored_hashed = user['password']
-
+    print("Password: ",stored_hashed)
+    print("Password Matching: ",check_password(password, stored_hashed))
     if user and check_password(password, stored_hashed):
         # session['user'] = email
         return jsonify({
