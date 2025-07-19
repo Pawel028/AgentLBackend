@@ -81,10 +81,10 @@ def login():
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
-
+    print(data)
     db = get_db()
     user = db.users.find_one({'email': email})
-    stored_hashed = user['password'] 
+    stored_hashed = user['password']
 
     if user and check_password(password, stored_hashed):
         # session['user'] = email
