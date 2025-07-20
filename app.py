@@ -241,7 +241,8 @@ def finalize():
     lawyerAgent_obj = lawyerAgent(
         chat_history=chat_history1,
         uploaded_Img_text=uploaded_Img_text,
-        uploaded_Img_text_summary=uploaded_Img_text_summary
+        uploaded_Img_text_summary=uploaded_Img_text_summary,
+        query = data["query"]
     )
     try:
         lawyer_response = lawyerAgent_obj.finalize()

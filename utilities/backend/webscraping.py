@@ -4,6 +4,9 @@ from urllib.parse import urljoin, urlparse
 import time
 import json
 import csv
+import os
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' 
@@ -99,17 +102,31 @@ def save_to_csv(data, filename='scraped_data.csv'):
                 len(d['links'])
             ])
 
-if __name__ == '__main__':
-    urls_to_scrape = [
-        'https://en.wikipedia.org/wiki/Web_scraping',
-        'https://www.bbc.com/news/technology',
-        'https://www.python.org/',
-        'https://www.nytimes.com/',
-    ]
-
-    scraped_results = scrape_multiple_sites(urls_to_scrape)
+def google_search(query, api_key, cse_id, num_results=5):
+    url = f"https://www.googleapis.com/customsearch/v1"
+    params = {
+        'key': api_key,
+        'cx': cse_id,
+        'q': query,
+        'num': num_results
+    }
     
-    save_to_json(scraped_results, 'results.json')
-    save_to_csv(scraped_results, 'results.csv')
+    response = requests.get(url, params=params)
+    list_url = response.json()
+    list_url1=[list_url['items'][i]['link'] for i in range(len(list_url['items']))]
+    scraped_results = scrape_multiple_sites(list_url1)
+    return scraped_results
+
+if __name__ == '__main__':
+    query = "what are writ petitions?"
+    api_key = os.getenv("google_api_key")
+    cse_id = os.getenv("cse_id")
+    list_url = google_search(query = query,api_key=api_key,cse_id=cse_id,num_results=3)
+    # list_url1 = [list_url['items'][i]['link'] for i in range(len(list_url['items']))]
+    # print(list_url1)
+    scraped_results = scrape_multiple_sites(list_url)
+    print(scraped_results)
+    # save_to_json(scraped_results, 'results.json')
+    # save_to_csv(scraped_results, 'results.csv')
     
     print("✅ Scraping complete! Data saved to 'results.json' and 'results.csv'")

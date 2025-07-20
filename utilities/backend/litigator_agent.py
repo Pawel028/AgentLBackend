@@ -8,13 +8,15 @@ from pydantic import BaseModel, ConfigDict,validator
 from typing import Optional, List, Dict, Any
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utilities.backend.webscraping import google_search
 load_dotenv(find_dotenv())
 
 openai.api_version = "2022-12-01"
 openai.api_key = os.getenv("OPENAI_API_KEY")
 openai.api_version = "2022-12-01"
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
+api_key = os.getenv("google_api_key")
+cse_id = os.getenv("cse_id")
 class PartyIdentifierItem(BaseModel):
     name: str
     address: str
@@ -95,7 +97,8 @@ class Orchestrator_struct(BaseModel):
 class orchestratorAgent():
     def __init__(self, chat_history:List, 
                 uploaded_Img_text:List, 
-                uploaded_Img_text_summary:List):
+                uploaded_Img_text_summary:List,
+                query:str):
         if type(chat_history)== str: 
             self.chat_history = chat_history
         else:
@@ -113,7 +116,8 @@ class orchestratorAgent():
             uploaded_Img_text=self.uploaded_Img_text,
             uploaded_Img_text_summary=self.uploaded_Img_text_summary
         )
-        self.Party_Id_data = self.demographicextractorAgent_obj.extract_Ids()
+        self.query =query
+        # self.Party_Id_data = self.demographicextractorAgent_obj.extract_Ids()
         self.Party_Id_data = ""
         
 
@@ -128,10 +132,10 @@ class orchestratorAgent():
                         {"type": "text", "text": '''You are a helpful litigator and your task is to help the user. You need to provide 
                          an orchestration plan for the given Information. The plan should include what are the tasks a litigator needs
                          to do given the chat with user. You have to base you plan on the chat history, the uploaded image text,
-                         the uploaded image text summary, and the Party Identifier data. You have to focus on solving the user Issue in the current instance.
+                         the uploaded image text summary, and the query. You have to focus on solving the user Issue in the current instance.
                          The plan should be in JSON format with the following structure: 
                          Each step should have a unique Step_id, clear Instructions, input_required, output_required, and 
-                         optional tools that can be used.'''},
+                         optional tools that can be used. The tool available is google_search'''},
                     ]
                 },
                 {
@@ -140,7 +144,7 @@ class orchestratorAgent():
                         {"type": "text", "text": f'''Text in Image:{self.uploaded_Img_text} \n 
                          Summary of Text in Image: {self.uploaded_Img_text_summary} \n 
                          Chat History: {self.chat_history} \n 
-                         Party Identifier Data: {self.Party_Id_data}'''}
+                         query: {self.query}'''}
                     ]
                 }
             ],
@@ -161,7 +165,7 @@ class Litigator_struct(BaseModel):
 class litigatorAgent():
     def __init__(self, chat_history:List, 
                 uploaded_Img_text:List, 
-                uploaded_Img_text_summary:List):
+                uploaded_Img_text_summary:List, query:str):
         if type(chat_history)== str: 
             self.chat_history = chat_history
         else:
@@ -177,11 +181,13 @@ class litigatorAgent():
         self.orchestratorAgent_obj = orchestratorAgent(
             chat_history=self.chat_history,
             uploaded_Img_text=self.uploaded_Img_text,
-            uploaded_Img_text_summary=self.uploaded_Img_text_summary
+            uploaded_Img_text_summary=self.uploaded_Img_text_summary,
+            query = query
         )
+        self.query = query
         self.task_list = self.orchestratorAgent_obj.orchestrate()
 
-    def execute_task(self,orchestrator_Item):
+    def structured_response(self,orchestrator_Item):
         client = OpenAI()
         response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
@@ -211,6 +217,15 @@ class litigatorAgent():
         json_serializable = parsed.model_dump()  # or parsed.dict()
         json_string = json.dumps(json_serializable)
         return json_serializable
+
+
+    def execute_task(self,orchestrator_Item:OrchestratorItem):        
+        if orchestrator_Item['tools'] is not None and orchestrator_Item['tools']==['google_search']:
+            tool_response = google_search(orchestrator_Item['Instructions'], api_key=api_key, cse_id=cse_id)
+            return self.structured_response(tool_response)
+        else:
+            return self.structured_response(orchestrator_Item)
+        
     
     # def execute_all_tasks(self):
     #     results = []
@@ -251,10 +266,18 @@ class lawyer_struct(BaseModel):
     prompt_tokens: int
     model_config = ConfigDict(extra="forbid")
 
+class final_writeup(BaseModel):
+    Heading: str
+    Paragraph: str
+
+class lawyer_response_structure(BaseModel):
+    final_writeup: List[final_writeup]
+
 class lawyerAgent():
     def __init__(self, chat_history:List, 
                 uploaded_Img_text:List, 
-                uploaded_Img_text_summary:List):
+                uploaded_Img_text_summary:List,
+                query:str):
         if type(chat_history)== str: 
             self.chat_history = chat_history
         else:
@@ -270,8 +293,10 @@ class lawyerAgent():
         self.litigatorAgent_obj = litigatorAgent(
             chat_history=self.chat_history,
             uploaded_Img_text=self.uploaded_Img_text,
-            uploaded_Img_text_summary=self.uploaded_Img_text_summary
+            uploaded_Img_text_summary=self.uploaded_Img_text_summary,
+            query = query
         )
+        self.query = query
         self.results = self.litigatorAgent_obj.collate_results_into_text(self.litigatorAgent_obj.execute_all_tasks())
 
     def finalize(self):
@@ -302,6 +327,46 @@ class lawyerAgent():
         )
 
         # Access the plain text response
-        final_report = self.results+"\n\n\n"+response.choices[0].message.content
+        # final_report = self.results+"\n\n\n"+response.choices[0].message.content
+        final_report = response.choices[0].message.content
+        final_report1 = self.format_lawyer_response(final_report)
         # final_text = parsed.final_output
-        return final_report
+        return generate_markdown(final_report1)
+    
+    def format_lawyer_response(self,raw_data: str) -> str:
+        client = OpenAI()
+
+        response = client.beta.chat.completions.parse(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": [
+                            {"type": "text", "text": '''You are a helpful assistant designed to output JSON.
+                            You have to arrange the given write up into sections, headings and the paragraphs. Do not change anything in the write up, 
+                            just arrange it into the required format.
+                            here is the write up: ''' + raw_data},
+                        ]
+                    }
+                ],
+                response_format=lawyer_response_structure
+            )
+        parsed = response.choices[0].message.parsed
+        json_serializable = parsed.model_dump()  # or parsed.dict()
+        return json_serializable
+
+def generate_markdown(final_writeup):
+    md = ""
+    print(final_writeup)
+    for section in final_writeup['final_writeup']:
+        md += f"## {section['Heading']}\n\n{section['Paragraph']}\n\n"
+    return md
+
+
+if __name__ == "__main__":
+    query = "what are writ petitions?"
+    chat_history = []
+    image_txt = ""
+    party_data = ""
+    obj = lawyerAgent(chat_history=chat_history,uploaded_Img_text=image_txt, uploaded_Img_text_summary=party_data, query=query)
+    print(obj.finalize())
