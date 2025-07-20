@@ -7,12 +7,17 @@ import csv
 import os
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
-
+import openai
+from openai import OpenAI
+client = OpenAI()
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' 
                   '(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
 }
-
+openai.api_version = "2022-12-01"
+openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_version = "2022-12-01"
+openai.api_key = os.getenv("OPENAI_API_KEY")
 # Custom exceptions
 class ScrapingError(Exception):
     pass
@@ -73,15 +78,40 @@ def scrape_website(url):
     html = fetch_html(url)
     return parse_html(html, url)
 
-def scrape_multiple_sites(url_list, delay_between=2):
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
+def scrape_multiple_sites(url_list, delay_between=2, max_workers=5):
+    """
+    Scrape websites concurrently using threads.
+    
+    Args:
+        url_list (list): List of URLs to scrape.
+        delay_between (int): Optional sleep per thread after scraping.
+        max_workers (int): Number of concurrent threads.
+    
+    Returns:
+        list: Parsed data for each site.
+    """
     all_data = []
-    for url in url_list:
+
+    def scrape_with_delay(url):
         try:
             data = scrape_website(url)
-            all_data.append(data)
+            time.sleep(delay_between)
+            return data
         except ScrapingError as e:
             print(f"❌ Skipping {url}: {e}")
-        time.sleep(delay_between)  # Optional: be nice to servers
+            return None
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_url = {executor.submit(scrape_with_delay, url): url for url in url_list}
+
+        for future in as_completed(future_to_url):
+            result = future.result()
+            if result:
+                all_data.append(result)
+
     return all_data
 
 def save_to_json(data, filename='scraped_data.json'):
@@ -102,7 +132,26 @@ def save_to_csv(data, filename='scraped_data.csv'):
                 len(d['links'])
             ])
 
-def google_search(query, api_key, cse_id, num_results=5):
+def summarize(text):
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": '''You are a helpful lawyer summarize the text.'''
+            },
+            {
+                "role": "user",
+                "content": f'''Text: {text}'''
+            }
+        ],
+        temperature=0
+        # response_format="text"  # optional; defaults to text if omitted
+    )
+    return response.choices[0].message.content
+
+def google_search(query, api_key, cse_id, num_results=5,delay_between=2, max_workers=5):
     url = f"https://www.googleapis.com/customsearch/v1"
     params = {
         'key': api_key,
@@ -115,7 +164,16 @@ def google_search(query, api_key, cse_id, num_results=5):
     list_url = response.json()
     list_url1=[list_url['items'][i]['link'] for i in range(len(list_url['items']))]
     scraped_results = scrape_multiple_sites(list_url1)
-    return scraped_results
+    all_data = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_url = {executor.submit(summarize, text): text for text in scraped_results}
+
+        for future in as_completed(future_to_url):
+            result = future.result()
+            if result:
+                all_data.append(result)
+
+    return all_data
 
 if __name__ == '__main__':
     query = "what are writ petitions?"
