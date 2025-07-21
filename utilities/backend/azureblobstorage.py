@@ -83,6 +83,14 @@ class AzureBlobStorageClient:
         uploaded_text = blob_client.download_json(f"{base_path}/uploaded_text.json")["data"]
         summary = blob_client.download_json(f"{base_path}/summary.json")["data"]
         return chat_history, uploaded_text, summary
+    
+    def save_Images_to_blob(self, extracted_res,image_names):
+
+        blob_client = AzureBlobStorageClient(user_name=self.user_name,session_id = self.session_id)
+        base_path = f"{sanitize_filename(self.user_name)}/sessions/{sanitize_filename(self.session_id)}"
+        a = [blob_client.upload_json(f"{base_path}/{image_names[i]}_content.json", {"data": extracted_res[i].content}) for i in range(len(image_names))]
+        b = [blob_client.upload_json(f"{base_path}/{image_names[i]}_summary.json", {"data": extracted_res[i].summary}) for i in range(len(image_names))]
+        return 'Image Data Uploaded'
 
     def upload_file(self, bytes_data, process_id:str,file_type:str,content_type='application/octet-stream') -> str:
         if file_type == 'image':

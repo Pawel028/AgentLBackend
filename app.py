@@ -2,10 +2,10 @@ from flask import Flask, request, jsonify,url_for,render_template
 from flask_cors import CORS
 from utilities.backend.azureblobstorage import AzureBlobStorageClient
 from utilities.backend.litigator_agent import lawyerAgent
-from utilities.backend.doc_extracter_agent import extractorAgent
+from utilities.backend.doc_extracter_agent import extract
 import os
 from utilities.backend.docrecognizer import AzureDocIntelligenceClient
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import json
 import bcrypt
@@ -282,8 +282,7 @@ def upload_file():
         )
         text = doc_intelligence_client.analyze_read(bytes_data1=image_bytes)
         result_json = json.dumps(text)
-        extractorAgent_obj = extractorAgent(result_json)
-        extracted_data = extractorAgent_obj.extract()
+        extracted_data = extract()
         content = extracted_data.content
         summary = extracted_data.summary
 
@@ -304,6 +303,68 @@ def upload_file():
         return jsonify({'message': 'File uploaded successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/save_document', methods=['POST'])
+def save_document():
+    # try:
+    data = request.get_json()
+    # print(data['user_name'])
+    # if not data or 'username' not in data or 'conversations' not in data or 'images' not in data:
+    #     return jsonify({'error': 'Missing user_name or conversations or images'}), 400
+    user_name = data['username']
+    convo = data['conversationContext']
+    session_name = convo['id']
+    # print(data['images'][0])
+    image_list = data['images']
+    # print(image_list)
+    image_bytes_list = [base64.b64decode(x['data'].split('data:image/jpeg;base64')[1]) for x in image_list]
+    image_names = [x['name'] for x in image_list]
+    results = []
+    with ThreadPoolExecutor() as executor:
+            # Submit all tasks
+            future_to_task = {
+                executor.submit(doc_intelligence_client.analyze_read, item): item
+                for item in image_bytes_list
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_task):
+                # try:
+                result = future.result()
+                results.append(result)
+                # except Exception as e:
+                    # print(f"Error in task {future_to_task[future]}: {e}")
+    
+    # text = doc_intelligence_client.analyze_read(bytes_data1=image_bytes)
+    extracted_res = []
+    with ThreadPoolExecutor() as executor:
+            # Submit all tasks
+            future_to_task = {
+                executor.submit(extract, str(item)): item
+                for item in results
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_task):
+                # try:
+                result = future.result()
+                extracted_res.append(result)
+                # except Exception as e:
+                #     print(f"Error in task {future_to_task[future]}: {e}")
+    print(extracted_res)
+    
+    # content = extracted_data.content
+    # summary = extracted_data.summary
+
+    blob_client = AzureBlobStorageClient(user_name=user_name, session_id=session_name)
+    # blob_client.save_conversation_to_blob(convo)
+    print(blob_client.save_Images_to_blob(extracted_res, image_names))
+    return jsonify({'message': 'Session saved successfully'}), 200
+    # except Exception as e:
+    #     return jsonify({'error': str(e)}), 500
+    
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))  # Azure uses this env var

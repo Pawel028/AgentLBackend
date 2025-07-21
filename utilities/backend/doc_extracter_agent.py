@@ -18,28 +18,25 @@ class extractor_struct(BaseModel):
     completion_tokens: int
     prompt_tokens: int
 
-class extractorAgent():
-    def __init__(self, json):
-        self.json = json
 
-    def extract(self):
-        client = OpenAI()
-        response = client.beta.chat.completions.parse(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": [
-                        {"type": "text", "text": "You are a helpful assistant designed to output JSON. You need to extract the content from the output of document intelligence along with its summary and token counts."},
-                    ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.json}
-                    ]
-                }
-            ],
-            response_format=extractor_struct
-        )
-        return response.choices[0].message.parsed
+def extract(json):
+    client = OpenAI()
+    response = client.beta.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": "You are a helpful assistant designed to output JSON. You need to extract the content from the output of document intelligence along with its summary and token counts."},
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": json}
+                ]
+            }
+        ],
+        response_format=extractor_struct
+    )
+    return response.choices[0].message.parsed
