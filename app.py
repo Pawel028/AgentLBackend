@@ -312,7 +312,7 @@ def save_document():
     # print(data['user_name'])
     # if not data or 'username' not in data or 'conversations' not in data or 'images' not in data:
     #     return jsonify({'error': 'Missing user_name or conversations or images'}), 400
-    print(extracted_res)
+    print(data)
     user_name = data['username']
     convo = data['conversationContext']
     session_name = convo['id']
